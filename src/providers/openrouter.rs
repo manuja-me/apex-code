@@ -1,0 +1,153 @@
+use anyhow::{bail, Context, Result};
+use reqwest::Client;
+use serde_json::Value;
+use std::time::Duration;
+use crate::agent::types::*;
+use crate::config::ApexConfig;
+
+pub struct OpenRouterClient {
+    client: Client,
+    api_key: String,
+    base_url: String,
+    config: ApexConfig,
+}
+
+impl OpenRouterClient {
+    pub fn new(config: ApexConfig) -> Result<Self> {
+        let api_key = config.get_api_key().unwrap_or_default();
+        let client = Client::builder()
+            .timeout(Duration::from_secs(120))
+            .build()?;
+
+        Ok(Self {
+            client,
+            api_key,
+            base_url: config.provider.base_url.clone(),
+            config,
+        })
+    }
+
+    /// Complete a chat step with automatic model fallback on 429 / queue saturation
+    pub async fn chat_with_fallback(
+        &self,
+        messages: &[ChatMessage],
+        tools: Option<&[ToolDefinition]>,
+    ) -> Result<(String, Option<String>, Option<Vec<ToolCall>>)> {
+        if self.api_key.is_empty() {
+            bail!(
+                "No OpenRouter API key found!\n\
+                 Set your free key with: set OPENROUTER_API_KEY=your_key or in ~/.config/apex/config.toml\n\
+                 Get a free key at: https://openrouter.ai/keys"
+            );
+        }
+
+        let mut models_to_try = vec![self.config.models.primary.clone()];
+        for m in &self.config.models.fallback_pool {
+            if !models_to_try.contains(m) {
+                models_to_try.push(m.clone());
+            }
+        }
+
+        let mut last_err = String::new();
+
+        for model in &models_to_try {
+            match self.send_chat_request(model, messages, tools).await {
+                Ok(response) => {
+                    return Ok((model.clone(), response.0, response.1));
+                }
+                Err(err) => {
+                    let err_str = err.to_string();
+                    last_err = err_str.clone();
+
+                    // Check for rate limit or queue overload
+                    if err_str.contains("429") || err_str.contains("rate limit") || err_str.contains("busy") || err_str.contains("overloaded") {
+                        eprintln!("\x1b[33m[!] Model '{}' rate-limited on free tier. Auto-routing to next fallback model...\x1b[0m", model);
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        continue;
+                    } else {
+                        // Other error, also try fallback if auto_fallback is true
+                        if self.config.models.auto_fallback {
+                            eprintln!("\x1b[33m[!] Model '{}' failed: {}. Trying fallback...\x1b[0m", model, err);
+                            continue;
+                        } else {
+                            bail!(err);
+                        }
+                    }
+                }
+            }
+        }
+
+        bail!("All models in fallback pool failed. Last error: {}", last_err)
+    }
+
+    async fn send_chat_request(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        tools: Option<&[ToolDefinition]>,
+    ) -> Result<(Option<String>, Option<Vec<ToolCall>>)> {
+        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+
+        let request_payload = ChatCompletionRequest {
+            model: model.to_string(),
+            messages: messages.to_vec(),
+            tools: tools.map(|t| t.to_vec()),
+            stream: Some(false),
+            temperature: Some(self.config.agent.temperature),
+            max_tokens: Some(self.config.agent.max_tokens),
+        };
+
+        let response = self.client.post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("HTTP-Referer", "https://github.com/manuja-me/apex-code")
+            .header("X-Title", "Apex Code Agent")
+            .json(&request_payload)
+            .send()
+            .await
+            .with_context(|| format!("Failed to connect to OpenRouter at {}", url))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            bail!("OpenRouter API error (HTTP {}): {}", status, error_text);
+        }
+
+        let resp_json: Value = response.json().await
+            .context("Failed to parse JSON response from OpenRouter")?;
+
+        let choice = resp_json.get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .context("No choices returned in API response")?;
+
+        let message = choice.get("message").context("Missing message in choice")?;
+
+        let content = message.get("content").and_then(|c| c.as_str()).map(|s| s.to_string());
+
+        let tool_calls = if let Some(tc_array) = message.get("tool_calls").and_then(|tc| tc.as_array()) {
+            let mut calls = Vec::new();
+            for tc in tc_array {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("call_0").to_string();
+                let call_type = tc.get("type").and_then(|v| v.as_str()).unwrap_or("function").to_string();
+                let fn_val = tc.get("function").context("Missing function in tool_call")?;
+                let name = fn_val.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let arguments = match fn_val.get("arguments") {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(val) => val.to_string(),
+                    None => "{}".to_string(),
+                };
+
+                calls.push(ToolCall {
+                    id,
+                    call_type,
+                    function: FunctionCall { name, arguments },
+                });
+            }
+            if calls.is_empty() { None } else { Some(calls) }
+        } else {
+            None
+        };
+
+        Ok((content, tool_calls))
+    }
+}

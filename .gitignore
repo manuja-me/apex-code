@@ -1,0 +1,7 @@
+/target
+.apex/
+.env
+*.env
+*.log
+.DS_Store
+Thumbs.db
