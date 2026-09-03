@@ -1,6 +1,6 @@
 # ⚡ Apex (`apex-code`)
 
-> **An ultra-fast, autonomous coding agent and Swiss-style TUI designed as a high-performance alternative to Claude Code.**
+> **An ultra-fast, autonomous coding agent and Swiss-style TUI designed as a high-performance, cost-free alternative to Claude Code.**
 
 [![Rust](https://img.shields.io/badge/Language-Rust%202021-DEA584.svg?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
@@ -22,44 +22,33 @@
 
 ---
 
-## Architecture
+## Swiss TUI Interface
 
-```mermaid
-flowchart TD
-    subgraph UI ["Terminal User Interface"]
-        TUI[Swiss-Style TUI (Ratatui)]
-        CLI[Direct Headless Runner]
-    end
+Apex features a terminal user interface inspired by the **Swiss International Typographic Style** (Josef Müller-Brockmann, Massimo Vignelli):
 
-    subgraph Core ["Apex Runtime Engine (Rust / Tokio)"]
-        ReAct[ReAct Autonomous Orchestrator]
-        Router[Multi-Model Router & Failover Pool]
-        Context[Context & AST Scope Engine]
-    end
-
-    subgraph Providers ["Model Providers"]
-        OpenRouter[OpenRouter Free Tier (/chat/completions)]
-        Qwen[Qwen 2.5 Coder 32B Free]
-        DeepSeek[DeepSeek R1 Free]
-        Gemini[Gemini 2.0 Flash Exp Free]
-        Llama[Llama 3.3 70B Free]
-    end
-
-    subgraph Tools ["Native Tooling Engine"]
-        RG[Embedded Ripgrep Search]
-        Files[Surgical File Reader / Editor]
-        Shell[Sandboxed Terminal Exec]
-        Git[Git Status & Unified Diff]
-    end
-
-    UI --> Core
-    Core --> Tools
-    Core --> Router
-    Router --> OpenRouter
-    OpenRouter --> Qwen
-    OpenRouter --> DeepSeek
-    OpenRouter --> Gemini
-    OpenRouter --> Llama
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [+] APEX//CLI  RELEASE 0.1.0   │ ROUTING: FLASH ➔ QWEN   │ 18.4K/1M TOKENS │ $0.0000 │ MAIN*   │
+├──────────────────────────────────────────────────────────────┬─────────────────────────────────┤
+│ // 01. USER INTENT                                           │ // 01. LSP COMPILER HEALTH      │
+│ [01] Optimize auth middleware to cache claims with Redis.    │ ┌──────────────┬──────────────┐ │
+│                                                              │ │ ERRORS:  00  │ WARNS:   01  │ │
+│ TIER 01 // FLASH (FAST AST SCAN - 6.2ms)                     │ │ SYMBOLS: 412 │ RESP:   12MS │ │
+│ Analyzed 14 translation units • Isolated 2 dependency nodes  │ └──────────────┴──────────────┘ │
+│                                                              ├─────────────────────────────────┤
+│ TOOL.EXEC — RIPGREP "verify_token"            [3 HITS • 0.4MS│ // 02. TOKEN DENSITY (1.8%)     │
+│ ┌──────────────────────────────────────────────────────────┐ │ ■■□□□□□□□□□□□□□□□□□□□□□□□□□□□□  │
+│ │ src/auth/jwt.rs:42: pub async fn verify_token(...)       │ │ IN-MEMORY: 18.4K / 1000K        │
+│ └──────────────────────────────────────────────────────────┘ ├─────────────────────────────────┤
+│ [DIFF] SRC/MIDDLEWARE/AUTH.RS                [+14 / -3]      │ // 03. ACTIVE ASSETS            │
+│ ┌──────────────────────────────────────────────────────────┐ │ • Cargo.toml (180 tokens)       │
+│ │ 18 - let claims = jwt::verify_token(&auth_header).await? │ │ • src/main.rs (420 tokens)      │
+│ │ 18 + // Fast L1 memory & Redis cache lookup              │ │                                 │
+│ │ 19 + if let Some(cached) = redis.get(&token).await? {    │ │ [TAB] SIDEBAR    [ESC] STOP     │
+│ └──────────────────────────────────────────────────────────┘ │ [ENTER] SEND     [UP/DN] SCROLL │
+├──────────────────────────────────────────────────────────────┴─────────────────────────────────┤
+│ PROMPT> Write unit test for the cache miss path in tests/auth_flow.rs     [ENTER ↵] [TAB]      │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -68,23 +57,39 @@ flowchart TD
 
 ### 1. 100% Free OpenRouter Tier Support
 Apex works out of the box with OpenRouter's free `:free` models:
-* `qwen/qwen-2.5-coder-32b-instruct:free` (Primary coding model)
-* `deepseek/deepseek-r1:free` (Deep step-by-step reasoning)
-* `meta-llama/llama-3.3-70b-instruct:free` (Broad refactoring)
-* `google/gemini-2.0-flash-exp:free` (Lightning-fast indexing & search)
+* **`qwen/qwen-2.5-coder-32b-instruct:free`** &mdash; Primary coding, editing, and diff engine.
+* **`deepseek/deepseek-r1:free`** &mdash; Deep step-by-step reasoning and algorithmic planning.
+* **`meta-llama/llama-3.3-70b-instruct:free`** &mdash; Broad refactoring and instruction following.
+* **`google/gemini-2.0-flash-exp:free`** &mdash; Lightning-fast repository search and file indexing.
 
 ### 2. Automatic Zero-Cost Model Failover
-If OpenRouter's free tier hits a `429 Too Many Requests` or queue saturation, **Apex automatically hot-swaps to the next free model in the pool without interrupting your work session.**
+If OpenRouter's free tier encounters a `429 Too Many Requests` or temporary queue saturation, **Apex automatically hot-swaps to the next free model in the pool without interrupting your work session.**
 
-### 3. Swiss International Typographic TUI
-Inspired by Josef Müller-Brockmann and modernist design principles:
-* **8:4 Asymmetric Grid**: Clear separation between execution logs and compiler telemetry.
-* **Typographic Hierarchy**: Monospace high-precision layouts with Swiss Red (`#EB0029`) accents.
-* **Compiler Telemetry**: Real-time diagnostic matrices, symbol counts, and token density gauges.
+### 3. Native Embedded Tooling Engine
+Unlike other agents that shell out to slow external scripts, Apex embeds its core tools directly into the binary:
+* **Embedded Ripgrep**: High-speed regex file searching using the `ignore` and `regex` crates (respects `.gitignore`).
+* **Surgical File Editor**: Exact, unique block replacement to avoid rewriting entire files.
+* **Sandboxed Command Runner**: Async shell execution with automatic timeout and output truncation.
+* **Git Operations**: Real-time git status, branch detection, and unstaged diff inspections.
 
 ### 4. Dual Operational Modes
-* **Interactive TUI Mode**: Run `apex` to open the full split-screen dashboard.
-* **Headless Stream Mode**: Run `apex "refactor auth middleware"` to execute single tasks directly in your current shell.
+* **Interactive TUI Mode**: Run `apex` to launch the full split-screen dashboard.
+* **Headless Stream Mode**: Run `apex "refactor auth middleware"` to execute tasks directly in your terminal stream.
+
+---
+
+## Built-In Agent Tools
+
+| Tool Name | Description |
+| :--- | :--- |
+| `ripgrep` | Ultra-fast regex and text search across the workspace (respects `.gitignore`). |
+| `find_files` | Fuzzy file and directory name discovery across the repository. |
+| `view_file` | Reads file content with customizable line-range windows and line numbers. |
+| `edit_file` | Applies surgical search-and-replace patches to existing files. |
+| `write_file` | Creates new files or overwrites existing ones with directory auto-creation. |
+| `run_command` | Executes terminal commands with timeout enforcement and captured output. |
+| `git_status` | Returns short branch status, staged modifications, and untracked files. |
+| `git_diff` | Shows unstaged git diffs across the entire project or for a specific file. |
 
 ---
 
@@ -103,7 +108,7 @@ cargo build --release
 The compiled binary will be located at `target/release/apex.exe` (or `target/release/apex` on Linux/macOS).
 
 ### 2. Configure Your Free OpenRouter Key
-Set your key in your shell:
+Set your key in your current shell:
 ```bash
 # Windows (PowerShell)
 $env:OPENROUTER_API_KEY = "your_openrouter_key"
@@ -112,13 +117,13 @@ $env:OPENROUTER_API_KEY = "your_openrouter_key"
 export OPENROUTER_API_KEY="your_openrouter_key"
 ```
 
-Or initialize a local configuration file in your project:
+Or initialize a project-level configuration file:
 ```bash
 apex init
 ```
-This generates a `.apex/config.toml` where you can permanently set your key and customize model pools.
+This generates a `.apex/config.toml` where you can permanently configure API keys and model pools.
 
-### 3. Usage
+### 3. Usage Examples
 
 #### Launch the Interactive Swiss TUI:
 ```bash
@@ -130,10 +135,22 @@ apex
 apex "search for all unwrapped error results and replace with proper ? operators"
 ```
 
-#### View Current Configuration:
+#### View Current Configuration & Active Model Pool:
 ```bash
 apex config
 ```
+
+---
+
+## Keyboard Navigation (TUI)
+
+| Keybinding | Action |
+| :--- | :--- |
+| <kbd>Enter</kbd> | Submit prompt to the agent |
+| <kbd>Tab</kbd> | Cycle sidebar panel (Telemetry / Workers / Keymap) |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | Scroll conversation and execution stream |
+| <kbd>Esc</kbd> | Interrupt current agent task / Exit |
+| <kbd>Ctrl+C</kbd> | Force quit application |
 
 ---
 
@@ -143,7 +160,7 @@ apex config
 [provider]
 provider_type = "openrouter"
 base_url = "https://openrouter.ai/api/v1"
-# api_key = "sk-or-v1-..." (Optional if set in environment)
+# api_key = "sk-or-v1-..." (Optional if set via OPENROUTER_API_KEY)
 
 [models]
 primary = "qwen/qwen-2.5-coder-32b-instruct:free"
@@ -163,6 +180,13 @@ max_steps = 30
 temperature = 0.2
 max_tokens = 4096
 ```
+
+---
+
+## Branching Strategy
+
+* **`main`**: Production-ready, stable releases.
+* **`development`**: Active feature development, experimental tools, and provider integrations.
 
 ---
 
