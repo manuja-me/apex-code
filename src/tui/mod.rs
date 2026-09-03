@@ -89,6 +89,16 @@ async fn run_loop<B: ratatui::backend::Backend>(
                     let prompt = app.input.trim().to_string();
                     app.input.clear();
                     app.cursor_pos = 0;
+                    app.prompt_history.push(prompt.clone());
+                    app.history_idx = None;
+
+                    // Intercept slash commands immediately
+                    if prompt.starts_with('/') {
+                        if app.handle_slash_command(&prompt).await {
+                            continue;
+                        }
+                    }
+
                     app.is_running = true;
                     app.status_text = "AGENT RUNNING // THINKING".to_string();
 

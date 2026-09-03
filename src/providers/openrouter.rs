@@ -28,11 +28,12 @@ impl OpenRouterClient {
     }
 
     /// Complete a chat step with automatic model fallback on 429 / queue saturation
+    /// Returns: (selected_model, content, tool_calls, prompt_tokens, completion_tokens)
     pub async fn chat_with_fallback(
         &self,
         messages: &[ChatMessage],
         tools: Option<&[ToolDefinition]>,
-    ) -> Result<(String, Option<String>, Option<Vec<ToolCall>>)> {
+    ) -> Result<(String, Option<String>, Option<Vec<ToolCall>>, usize, usize)> {
         if self.api_key.is_empty() {
             bail!(
                 "No OpenRouter API key found!\n\
@@ -53,7 +54,7 @@ impl OpenRouterClient {
         for model in &models_to_try {
             match self.send_chat_request(model, messages, tools).await {
                 Ok(response) => {
-                    return Ok((model.clone(), response.0, response.1));
+                    return Ok((model.clone(), response.0, response.1, response.2, response.3));
                 }
                 Err(err) => {
                     let err_str = err.to_string();
@@ -85,7 +86,7 @@ impl OpenRouterClient {
         model: &str,
         messages: &[ChatMessage],
         tools: Option<&[ToolDefinition]>,
-    ) -> Result<(Option<String>, Option<Vec<ToolCall>>)> {
+    ) -> Result<(Option<String>, Option<Vec<ToolCall>>, usize, usize)> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
         let request_payload = ChatCompletionRequest {
@@ -148,6 +149,17 @@ impl OpenRouterClient {
             None
         };
 
-        Ok((content, tool_calls))
+        // Extract usage metrics
+        let prompt_tokens = resp_json.get("usage")
+            .and_then(|u| u.get("prompt_tokens"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+
+        let completion_tokens = resp_json.get("usage")
+            .and_then(|u| u.get("completion_tokens"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+
+        Ok((content, tool_calls, prompt_tokens, completion_tokens))
     }
 }

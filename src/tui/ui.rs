@@ -116,19 +116,40 @@ fn draw_stream(f: &mut Frame, app: &App, area: Rect) {
                     Span::styled("✔ COMPLETED: ", Style::default().fg(SwissTheme::EMERALD).add_modifier(Modifier::BOLD)),
                     Span::styled(format!("{} ({}ms)", name, duration_ms), Style::default().fg(SwissTheme::MUTED_TEXT)),
                 ]));
-                for l in msg.content.lines().take(6) {
+                for l in msg.content.lines().take(12) {
+                    let style = if l.starts_with('+') && !l.starts_with("+++") {
+                        Style::default().fg(SwissTheme::EMERALD).bg(Color::Rgb(9, 26, 19))
+                    } else if l.starts_with('-') && !l.starts_with("---") {
+                        Style::default().fg(Color::Rgb(253, 164, 175)).bg(Color::Rgb(31, 9, 13))
+                    } else if l.starts_with("@@") {
+                        Style::default().fg(Color::Rgb(103, 232, 249)).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Rgb(170, 175, 185))
+                    };
+
                     lines.push(Line::from(vec![
-                        Span::styled("  | ", Style::default().fg(SwissTheme::BORDER_LINE)),
-                        Span::styled(l, Style::default().fg(Color::Rgb(170, 175, 185))),
+                        Span::styled("  │ ", Style::default().fg(SwissTheme::BORDER_LINE)),
+                        Span::styled(l, style),
                     ]));
                 }
-                if msg.content.lines().count() > 6 {
-                    lines.push(Line::from(Span::styled("  | ... [truncated]", Style::default().fg(SwissTheme::SUBTLE_TEXT))));
+                if msg.content.lines().count() > 12 {
+                    lines.push(Line::from(Span::styled("  │ ... [truncated]", Style::default().fg(SwissTheme::SUBTLE_TEXT))));
                 }
                 lines.push(Line::from(""));
             }
             TuiMessageKind::System => {
-                lines.push(Line::from(Span::styled(&msg.content, Style::default().fg(SwissTheme::SUBTLE_TEXT))));
+                for l in msg.content.lines() {
+                    let style = if l.starts_with('+') && !l.starts_with("+++") {
+                        Style::default().fg(SwissTheme::EMERALD)
+                    } else if l.starts_with('-') && !l.starts_with("---") {
+                        Style::default().fg(Color::Rgb(253, 164, 175))
+                    } else if l.starts_with("===") {
+                        Style::default().fg(SwissTheme::STARK_WHITE).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(SwissTheme::SUBTLE_TEXT)
+                    };
+                    lines.push(Line::from(Span::styled(l, style)));
+                }
                 lines.push(Line::from(""));
             }
             TuiMessageKind::Error => {
@@ -155,7 +176,7 @@ fn draw_stream(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(p, area);
 }
 
-fn draw_sidebar(f: &mut Frame, _app: &App, area: Rect) {
+fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     let sidebar_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -171,24 +192,22 @@ fn draw_sidebar(f: &mut Frame, _app: &App, area: Rect) {
             Span::styled("ERRORS:   ", Style::default().fg(SwissTheme::MUTED_TEXT)),
             Span::styled("00", Style::default().fg(SwissTheme::EMERALD).add_modifier(Modifier::BOLD)),
             Span::styled("   WARNINGS: ", Style::default().fg(SwissTheme::MUTED_TEXT)),
-            Span::styled("01", Style::default().fg(SwissTheme::AMBER).add_modifier(Modifier::BOLD)),
+            Span::styled("00", Style::default().fg(SwissTheme::EMERALD).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
-            Span::styled("SYMBOLS:  ", Style::default().fg(SwissTheme::MUTED_TEXT)),
-            Span::styled("412", Style::default().fg(SwissTheme::STARK_WHITE)),
-            Span::styled("  LSP RESP: ", Style::default().fg(SwissTheme::MUTED_TEXT)),
-            Span::styled("12MS", Style::default().fg(SwissTheme::STARK_WHITE)),
+            Span::styled("ACTIVE:   ", Style::default().fg(SwissTheme::MUTED_TEXT)),
+            Span::styled(&app.active_model, Style::default().fg(SwissTheme::STARK_WHITE)),
         ]),
         Line::from(vec![
             Span::styled("STATUS:   ", Style::default().fg(SwissTheme::MUTED_TEXT)),
-            Span::styled("RUST-ANALYZER READY", Style::default().fg(SwissTheme::EMERALD)),
+            Span::styled(&app.status_text, Style::default().fg(SwissTheme::EMERALD)),
         ]),
     ];
 
     let lsp_box = Paragraph::new(lsp_lines)
         .block(
             Block::default()
-                .title(" // 01. COMPILER TELEMETRY ")
+                .title(" // 01. ENGINE TELEMETRY ")
                 .title_style(Style::default().fg(SwissTheme::MUTED_TEXT).add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(SwissTheme::BORDER_LINE)),
@@ -196,22 +215,34 @@ fn draw_sidebar(f: &mut Frame, _app: &App, area: Rect) {
     f.render_widget(lsp_box, sidebar_chunks[0]);
 
     // 2. Token Gauge & Scope
+    let token_bar = if app.token_count > 0 {
+        let filled = (app.token_count / 1000).min(20);
+        let empty = 20 - filled;
+        format!("{}{}", "■".repeat(filled), "□".repeat(empty))
+    } else {
+        "□□□□□□□□□□□□□□□□□□□□".to_string()
+    };
+
     let token_lines = vec![
         Line::from(vec![
-            Span::styled("RATIO: ", Style::default().fg(SwissTheme::MUTED_TEXT)),
-            Span::styled("■■□□□□□□□□□□□□□□□□□□", Style::default().fg(SwissTheme::STARK_WHITE)),
+            Span::styled("TOKENS: ", Style::default().fg(SwissTheme::MUTED_TEXT)),
+            Span::styled(format!("{} ", app.token_count), Style::default().fg(SwissTheme::STARK_WHITE).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("(${:.4})", app.cost), Style::default().fg(SwissTheme::EMERALD)),
         ]),
         Line::from(vec![
-            Span::styled("IN-SCOPE ASSETS: ", Style::default().fg(SwissTheme::MUTED_TEXT).add_modifier(Modifier::BOLD)),
+            Span::styled("BAR:    ", Style::default().fg(SwissTheme::MUTED_TEXT)),
+            Span::styled(token_bar, Style::default().fg(SwissTheme::STARK_WHITE)),
         ]),
-        Line::from(Span::styled(" • Cargo.toml (180 tkn)", Style::default().fg(SwissTheme::STARK_WHITE))),
-        Line::from(Span::styled(" • src/main.rs (420 tkn)", Style::default().fg(SwissTheme::STARK_WHITE))),
+        Line::from(vec![
+            Span::styled("TARGET: ", Style::default().fg(SwissTheme::MUTED_TEXT)),
+            Span::styled(app.workspace.file_name().unwrap_or_default().to_string_lossy(), Style::default().fg(SwissTheme::STARK_WHITE)),
+        ]),
     ];
 
     let token_box = Paragraph::new(token_lines)
         .block(
             Block::default()
-                .title(" // 02. CONTEXT ENGINE ")
+                .title(" // 02. SESSION DENSITY ")
                 .title_style(Style::default().fg(SwissTheme::MUTED_TEXT).add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(SwissTheme::BORDER_LINE)),
@@ -221,19 +252,27 @@ fn draw_sidebar(f: &mut Frame, _app: &App, area: Rect) {
     // 3. Command Keybindings
     let keymap_lines = vec![
         Line::from(vec![
-            Span::styled("ENTER ", SwissTheme::badge_white()),
-            Span::raw(" Send prompt to agent"),
+            Span::styled("ENTER  ", SwissTheme::badge_white()),
+            Span::raw(" Submit prompt"),
         ]),
         Line::from(vec![
-            Span::styled("TAB   ", SwissTheme::badge_white()),
-            Span::raw(" Cycle sidebar view"),
+            Span::styled("UP/DN  ", SwissTheme::badge_white()),
+            Span::raw(" Prompt history"),
         ]),
         Line::from(vec![
-            Span::styled("UP/DN ", SwissTheme::badge_white()),
-            Span::raw(" Scroll activity stream"),
+            Span::styled("PGUP/DN", SwissTheme::badge_white()),
+            Span::raw(" Scroll stream"),
         ]),
         Line::from(vec![
-            Span::styled("ESC   ", SwissTheme::badge_red()),
+            Span::styled("TAB    ", SwissTheme::badge_white()),
+            Span::raw(" Cycle panels"),
+        ]),
+        Line::from(vec![
+            Span::styled("/HELP  ", SwissTheme::badge_red()),
+            Span::raw(" Slash commands"),
+        ]),
+        Line::from(vec![
+            Span::styled("ESC    ", SwissTheme::badge_red()),
             Span::raw(" Stop / Exit"),
         ]),
     ];
@@ -241,7 +280,7 @@ fn draw_sidebar(f: &mut Frame, _app: &App, area: Rect) {
     let keymap_box = Paragraph::new(keymap_lines)
         .block(
             Block::default()
-                .title(" // 03. KEYMAP ")
+                .title(" // 03. CONTROLS ")
                 .title_style(Style::default().fg(SwissTheme::MUTED_TEXT).add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(SwissTheme::BORDER_LINE)),
@@ -250,13 +289,26 @@ fn draw_sidebar(f: &mut Frame, _app: &App, area: Rect) {
 }
 
 fn draw_input(f: &mut Frame, app: &App, area: Rect) {
-    let input_line = Line::from(vec![
+    let mut spans = vec![
         Span::styled("PROMPT> ", Style::default().fg(SwissTheme::SWISS_RED).add_modifier(Modifier::BOLD)),
-        Span::styled(&app.input, Style::default().fg(SwissTheme::STARK_WHITE)),
-        Span::styled("█", Style::default().fg(SwissTheme::SWISS_RED)),
-    ]);
+    ];
 
-    let input_widget = Paragraph::new(input_line)
+    if app.input.is_empty() {
+        spans.push(Span::styled("Type a task or / for commands (/help, /clear, /model, /diff, /status)...", Style::default().fg(SwissTheme::SUBTLE_TEXT)));
+    } else {
+        let pos = app.cursor_pos.min(app.input.len());
+        spans.push(Span::styled(&app.input[..pos], Style::default().fg(SwissTheme::STARK_WHITE)));
+        spans.push(Span::styled("█", Style::default().fg(SwissTheme::SWISS_RED)));
+        if pos < app.input.len() {
+            spans.push(Span::styled(&app.input[pos..], Style::default().fg(SwissTheme::STARK_WHITE)));
+        }
+    }
+
+    if app.input.starts_with('/') {
+        spans.push(Span::styled("  [Commands: /help, /clear, /model, /diff, /status, /quit]", Style::default().fg(SwissTheme::MUTED_TEXT)));
+    }
+
+    let input_widget = Paragraph::new(Line::from(spans))
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -266,7 +318,7 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
-    let footer_text = format!(" APEX STATE: {} | DIR: {} ", app.status_text, app.workspace.display());
+    let footer_text = format!(" APEX STATE: {} | MODEL: {} | DIR: {} ", app.status_text, app.active_model, app.workspace.display());
     let footer = Paragraph::new(footer_text)
         .style(Style::default().fg(SwissTheme::SUBTLE_TEXT));
     f.render_widget(footer, area);

@@ -124,6 +124,9 @@ async fn run_headless_cli(workspace: &Path, config: ApexConfig, prompt: &str) ->
             AgentEvent::Error(err) => {
                 eprintln!("{} {}", "✖ ERROR:".red().bold(), err);
             }
+            AgentEvent::UsageUpdate { session_tokens, estimated_cost, .. } => {
+                println!("{}", format!("● [Usage: {} tokens | ${:.4}]", session_tokens, estimated_cost).dimmed());
+            }
             AgentEvent::StepDone => {}
         }
     }).await?;

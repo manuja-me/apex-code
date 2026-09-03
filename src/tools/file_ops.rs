@@ -64,15 +64,23 @@ pub fn edit_file(
     let content = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read file: {}", rel_path))?;
 
-    // Normalize line endings for reliable matching
+    // 1. Normalize line endings for reliable matching
     let normalized_content = content.replace("\r\n", "\n");
     let normalized_target = target_content.replace("\r\n", "\n");
     let normalized_replacement = replacement_content.replace("\r\n", "\n");
 
     let match_count = normalized_content.matches(&normalized_target).count();
 
-    if match_count == 0 {
-        bail!("target_content not found in {}. Please verify line numbers and exact content.", rel_path);
+    if match_count == 1 {
+        let new_content = normalized_content.replacen(&normalized_target, &normalized_replacement, 1);
+        let final_content = if content.contains("\r\n") {
+            new_content.replace("\n", "\r\n")
+        } else {
+            new_content
+        };
+        std::fs::write(&file_path, final_content)
+            .with_context(|| format!("Failed to write modified file: {}", rel_path))?;
+        return Ok(format!("Successfully applied edit to {}", rel_path));
     }
 
     if match_count > 1 {
@@ -83,17 +91,57 @@ pub fn edit_file(
         );
     }
 
-    let new_content = normalized_content.replacen(&normalized_target, &normalized_replacement, 1);
+    // 2. Whitespace-tolerant line matching fallback if exact match fails
+    let file_lines: Vec<&str> = normalized_content.lines().collect();
+    let target_lines: Vec<&str> = normalized_target.lines().collect();
 
-    // Write back with original or standard line endings
-    let final_content = if content.contains("\r\n") {
-        new_content.replace("\n", "\r\n")
-    } else {
-        new_content
-    };
+    if !target_lines.is_empty() && file_lines.len() >= target_lines.len() {
+        let mut matched_indices = Vec::new();
 
-    std::fs::write(&file_path, final_content)
-        .with_context(|| format!("Failed to write modified file: {}", rel_path))?;
+        for i in 0..=(file_lines.len() - target_lines.len()) {
+            let window = &file_lines[i..i + target_lines.len()];
+            let mut matches = true;
 
-    Ok(format!("Successfully applied edit to {}", rel_path))
+            for (file_l, target_l) in window.iter().zip(target_lines.iter()) {
+                if file_l.trim() != target_l.trim() {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if matches {
+                matched_indices.push(i);
+            }
+        }
+
+        if matched_indices.len() == 1 {
+            let start_idx = matched_indices[0];
+            let end_idx = start_idx + target_lines.len();
+
+            let mut new_lines = Vec::new();
+            new_lines.extend_from_slice(&file_lines[..start_idx]);
+            new_lines.push(&normalized_replacement);
+            new_lines.extend_from_slice(&file_lines[end_idx..]);
+
+            let joined = new_lines.join("\n");
+            let final_content = if content.contains("\r\n") {
+                joined.replace("\n", "\r\n")
+            } else {
+                joined
+            };
+
+            std::fs::write(&file_path, final_content)
+                .with_context(|| format!("Failed to write modified file: {}", rel_path))?;
+
+            return Ok(format!("Successfully applied whitespace-tolerant edit to {}", rel_path));
+        } else if matched_indices.len() > 1 {
+            bail!(
+                "target_content matched {} distinct locations in {}. Please include more surrounding code.",
+                matched_indices.len(),
+                rel_path
+            );
+        }
+    }
+
+    bail!("target_content not found in {}. Please verify line numbers and exact content.", rel_path);
 }
