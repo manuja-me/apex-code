@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -81,6 +81,10 @@ async fn run_loop<B: ratatui::backend::Backend>(
 
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+
                 if key.code == KeyCode::Enter && !app.input.trim().is_empty() && !app.is_running {
                     let prompt = app.input.trim().to_string();
                     app.input.clear();
