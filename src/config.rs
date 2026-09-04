@@ -80,16 +80,19 @@ impl Default for AgentConfig {
     }
 }
 
-fn default_provider_type() -> String { "openrouter".to_string() }
-fn default_base_url() -> String { "https://openrouter.ai/api/v1".to_string() }
-fn default_primary_model() -> String { "qwen/qwen-2.5-coder-32b-instruct:free".to_string() }
-fn default_fast_model() -> String { "google/gemini-2.0-flash-exp:free".to_string() }
+fn default_provider_type() -> String { "omniroute".to_string() }
+fn default_base_url() -> String { "http://localhost:20128/v1".to_string() }
+fn default_primary_model() -> String { "openrouter/qwen/qwen-2.5-coder-32b-instruct:free".to_string() }
+fn default_fast_model() -> String { "openrouter/google/gemini-2.0-flash-exp:free".to_string() }
 fn default_fallback_pool() -> Vec<String> {
     vec![
-        "qwen/qwen-2.5-coder-32b-instruct:free".to_string(),
-        "meta-llama/llama-3.3-70b-instruct:free".to_string(),
-        "deepseek/deepseek-r1:free".to_string(),
-        "google/gemini-2.0-flash-exp:free".to_string(),
+        "openrouter/qwen/qwen-2.5-coder-32b-instruct:free".to_string(),
+        "openrouter/deepseek/deepseek-r1:free".to_string(),
+        "openrouter/meta-llama/llama-3.3-70b-instruct:free".to_string(),
+        "openrouter/google/gemini-2.0-flash-exp:free".to_string(),
+        "google/gemini-2.0-flash".to_string(),
+        "openrouter/deepseek/deepseek-r1".to_string(),
+        "openrouter/qwen/qwen-2.5-coder-32b-instruct".to_string(),
     ]
 }
 fn default_true() -> bool { true }
@@ -133,9 +136,17 @@ impl ApexConfig {
             }
         }
 
-        if let Ok(key) = std::env::var("OPENROUTER_API_KEY") {
+        if let Ok(url) = std::env::var("OMNIROUTE_BASE_URL") {
+            config.provider.base_url = url;
+        } else if let Ok(url) = std::env::var("APEX_BASE_URL") {
+            config.provider.base_url = url;
+        }
+
+        if let Ok(key) = std::env::var("OMNIROUTE_API_KEY") {
             config.provider.api_key = Some(key);
         } else if let Ok(key) = std::env::var("APEX_API_KEY") {
+            config.provider.api_key = Some(key);
+        } else if let Ok(key) = std::env::var("OPENROUTER_API_KEY") {
             config.provider.api_key = Some(key);
         }
 
@@ -147,7 +158,21 @@ impl ApexConfig {
     }
 
     pub fn get_api_key(&self) -> Option<String> {
-        self.provider.api_key.clone()
+        if let Some(ref k) = self.provider.api_key {
+            if !k.trim().is_empty() {
+                return Some(k.clone());
+            }
+        }
+
+        // For OmniRoute and local gateway proxies, provide default fallback authorization
+        if self.provider.provider_type.eq_ignore_ascii_case("omniroute")
+            || self.provider.base_url.contains("localhost")
+            || self.provider.base_url.contains("127.0.0.1")
+        {
+            Some("omniroute".to_string())
+        } else {
+            None
+        }
     }
 
     pub fn save_default(path: &Path) -> Result<()> {

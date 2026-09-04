@@ -34,7 +34,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         .constraints([
             Constraint::Length(22), // [+] APEX//CLI
             Constraint::Min(20),   // Model Router Badge
-            Constraint::Length(24), // Tokens & Cost
+            Constraint::Length(28), // Tokens & Cost
             Constraint::Length(16), // Git Branch
         ])
         .split(area);
@@ -57,7 +57,12 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(router, header_chunks[1]);
 
     // Tokens & Cost Block
-    let tokens_text = format!(" USAGE: {} / ${:.4} ", app.token_count, app.cost);
+    let cost_str = if app.cost == 0.0 {
+        "$0.00 [FREE]".to_string()
+    } else {
+        format!("${:.4}", app.cost)
+    };
+    let tokens_text = format!(" USAGE: {} / {} ", app.token_count, cost_str);
     let tokens = Paragraph::new(Line::from(Span::styled(tokens_text, Style::default().fg(SwissTheme::MUTED_TEXT))))
         .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(SwissTheme::BORDER_LINE)));
     f.render_widget(tokens, header_chunks[2]);
@@ -249,30 +254,38 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
         );
     f.render_widget(token_box, sidebar_chunks[1]);
 
-    // 3. Command Keybindings
+    // 3. Command Keybindings & Skills
     let keymap_lines = vec![
         Line::from(vec![
-            Span::styled("ENTER  ", SwissTheme::badge_white()),
+            Span::styled("/SKILLS ", SwissTheme::badge_red()),
+            Span::raw(" Engineering playbooks"),
+        ]),
+        Line::from(vec![
+            Span::styled("/PLAN   ", SwissTheme::badge_red()),
+            Span::raw(" Scaffolding & architecture"),
+        ]),
+        Line::from(vec![
+            Span::styled("/TEST   ", SwissTheme::badge_red()),
+            Span::raw(" Run workspace test suite"),
+        ]),
+        Line::from(vec![
+            Span::styled("/REVIEW ", SwissTheme::badge_red()),
+            Span::raw(" Audit unstaged git diffs"),
+        ]),
+        Line::from(vec![
+            Span::styled("/COMMIT ", SwissTheme::badge_red()),
+            Span::raw(" Conventional git commit"),
+        ]),
+        Line::from(vec![
+            Span::styled("ENTER   ", SwissTheme::badge_white()),
             Span::raw(" Submit prompt"),
         ]),
         Line::from(vec![
-            Span::styled("UP/DN  ", SwissTheme::badge_white()),
-            Span::raw(" Prompt history"),
-        ]),
-        Line::from(vec![
-            Span::styled("PGUP/DN", SwissTheme::badge_white()),
-            Span::raw(" Scroll stream"),
-        ]),
-        Line::from(vec![
-            Span::styled("TAB    ", SwissTheme::badge_white()),
+            Span::styled("TAB     ", SwissTheme::badge_white()),
             Span::raw(" Cycle panels"),
         ]),
         Line::from(vec![
-            Span::styled("/HELP  ", SwissTheme::badge_red()),
-            Span::raw(" Slash commands"),
-        ]),
-        Line::from(vec![
-            Span::styled("ESC    ", SwissTheme::badge_red()),
+            Span::styled("ESC     ", SwissTheme::badge_white()),
             Span::raw(" Stop / Exit"),
         ]),
     ];
@@ -280,7 +293,7 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     let keymap_box = Paragraph::new(keymap_lines)
         .block(
             Block::default()
-                .title(" // 03. CONTROLS ")
+                .title(" // 03. SKILLS & CONTROLS ")
                 .title_style(Style::default().fg(SwissTheme::MUTED_TEXT).add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(SwissTheme::BORDER_LINE)),
@@ -294,7 +307,7 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     ];
 
     if app.input.is_empty() {
-        spans.push(Span::styled("Type a task or / for commands (/help, /clear, /model, /diff, /status)...", Style::default().fg(SwissTheme::SUBTLE_TEXT)));
+        spans.push(Span::styled("Type a task or / for skills (/plan, /test, /review, /commit, /skills, /help)...", Style::default().fg(SwissTheme::SUBTLE_TEXT)));
     } else {
         let pos = app.cursor_pos.min(app.input.len());
         spans.push(Span::styled(&app.input[..pos], Style::default().fg(SwissTheme::STARK_WHITE)));
@@ -305,7 +318,7 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) {
     }
 
     if app.input.starts_with('/') {
-        spans.push(Span::styled("  [Commands: /help, /clear, /model, /diff, /status, /quit]", Style::default().fg(SwissTheme::MUTED_TEXT)));
+        spans.push(Span::styled("  [Skills: /plan, /test, /review, /commit, /skills, /model, /diff, /status, /help]", Style::default().fg(SwissTheme::MUTED_TEXT)));
     }
 
     let input_widget = Paragraph::new(Line::from(spans))

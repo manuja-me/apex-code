@@ -3,7 +3,7 @@ use std::time::Instant;
 use anyhow::Result;
 use crate::agent::types::*;
 use crate::config::ApexConfig;
-use crate::providers::OpenRouterClient;
+use crate::providers::OmniRouteClient;
 use crate::tools::{execute_tool, get_tool_definitions};
 
 #[derive(Debug, Clone)]
@@ -21,7 +21,7 @@ pub enum AgentEvent {
 pub struct AgentEngine {
     pub workspace: PathBuf,
     pub config: ApexConfig,
-    pub client: OpenRouterClient,
+    pub client: OmniRouteClient,
     pub history: Vec<ChatMessage>,
     pub tools: Vec<ToolDefinition>,
     pub session_tokens: usize,
@@ -30,7 +30,7 @@ pub struct AgentEngine {
 impl AgentEngine {
     pub fn new(workspace: impl AsRef<Path>, config: ApexConfig) -> Result<Self> {
         let workspace = workspace.as_ref().to_path_buf();
-        let client = OpenRouterClient::new(config.clone())?;
+        let client = OmniRouteClient::new(config.clone())?;
         let tools = get_tool_definitions();
 
         let mut engine = Self {
@@ -59,6 +59,14 @@ impl AgentEngine {
             details.push("Project Type: Go".to_string());
         }
 
+        if let Some((name, cmd)) = crate::agent::skills::detect_test_runner(workspace) {
+            details.push(format!("Primary Test Runner: {} (`{}`)", name, cmd));
+        }
+
+        if let Some((name, cmd)) = crate::agent::skills::detect_linter(workspace) {
+            details.push(format!("Compiler / Linter Check: {} (`{}`)", name, cmd));
+        }
+
         if let Ok(output) = std::process::Command::new("git")
             .args(["status", "--short", "--branch"])
             .current_dir(workspace)
@@ -78,6 +86,7 @@ impl AgentEngine {
     fn init_system_prompt(&mut self, workspace: &Path) {
         let workspace_str = workspace.display().to_string();
         let context_str = Self::detect_project_context(workspace);
+        let skills_prompt = crate::agent::skills::skills_system_prompt();
 
         let system_prompt = format!(
             "You are APEX, an elite, high-performance autonomous coding agent operating directly in the user's terminal.\n\
@@ -87,8 +96,9 @@ impl AgentEngine {
             1. Precision & Verification: Always inspect files and locate symbols before modifying. After edits, run build/check/tests to verify.\n\
             2. Minimal Disruption: Use surgical edits (`edit_file`) whenever possible rather than rewriting whole files.\n\
             3. Tool Autonomy: You have full access to native ripgrep, file viewing, file writing/editing, terminal commands, and git diffs.\n\
-            4. Concise & Decisive: Avoid long conversational fluff. State actions clearly, execute tools proactively, and report verified results.",
-            workspace_str, context_str
+            4. Concise & Decisive: Avoid long conversational fluff. State actions clearly, execute tools proactively, and report verified results.\n\n\
+            {}",
+            workspace_str, context_str, skills_prompt
         );
 
         self.history.push(ChatMessage::system(system_prompt));
@@ -113,7 +123,7 @@ impl AgentEngine {
         let max_steps = self.config.agent.max_steps;
 
         for _step_idx in 0..max_steps {
-            // Request completion from OpenRouter with fallback
+            // Request completion from OmniRoute gateway with fallback
             let (model, content, tool_calls, prompt_tokens, completion_tokens) = match self.client.chat_with_fallback(&self.history, Some(&self.tools)).await {
                 Ok(res) => res,
                 Err(err) => {
@@ -123,8 +133,8 @@ impl AgentEngine {
             };
 
             self.session_tokens += prompt_tokens + completion_tokens;
-            // Free tier models have $0.00 cost; if paid, calculate estimate
-            let cost = if model.contains(":free") {
+            // When using OmniRoute or free tier, estimated cost is $0.00 (managed by OmniRoute)
+            let cost = if model.contains(":free") || self.config.provider.provider_type.eq_ignore_ascii_case("omniroute") {
                 0.0
             } else {
                 (self.session_tokens as f64 / 1_000_000.0) * 0.50

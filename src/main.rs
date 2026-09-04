@@ -61,8 +61,8 @@ async fn main() -> Result<()> {
                 println!("{}", "[-] .apex/config.toml already exists.".yellow());
             } else {
                 ApexConfig::save_default(&target_file)?;
-                println!("{}", "[+] Created .apex/config.toml with OpenRouter free model defaults.".green());
-                println!("Edit .apex/config.toml to customize model pool and keys.");
+                println!("{}", "[+] Created .apex/config.toml configured for OmniRoute (http://localhost:20128/v1).".green());
+                println!("Edit .apex/config.toml to customize model pool and gateway settings.");
             }
             return Ok(());
         }
@@ -137,16 +137,29 @@ async fn run_headless_cli(workspace: &Path, config: ApexConfig, prompt: &str) ->
 fn print_config_summary(config: &ApexConfig) {
     println!("{}", "=== Apex Agent Configuration ===".bold().white());
     println!("Provider:        {}", config.provider.provider_type.cyan());
-    println!("Base URL:        {}", config.provider.base_url);
+    println!("Gateway URL:     {}", config.provider.base_url);
     println!(
         "API Key:         {}",
-        if config.provider.api_key.is_some() { "[SET]".green() } else { "[NOT SET - using OPENROUTER_API_KEY env]".yellow() }
+        if let Some(ref key) = config.provider.api_key {
+            if !key.trim().is_empty() {
+                "[SET]".green()
+            } else {
+                "[DEFAULT - omniroute]".cyan()
+            }
+        } else if config.provider.provider_type.eq_ignore_ascii_case("omniroute")
+            || config.provider.base_url.contains("localhost")
+            || config.provider.base_url.contains("127.0.0.1")
+        {
+            "[DEFAULT - omniroute local]".cyan()
+        } else {
+            "[NOT SET]".yellow()
+        }
     );
-    println!("Primary Model:   {}", config.models.primary.bright_green());
-    println!("Fast Tier Model: {}", config.models.fast_tier.cyan());
-    println!("Fallback Pool:");
+    println!("Primary Model:   {} {}", config.models.primary.bright_green(), "[FREE TIER]".green().bold());
+    println!("Fast Tier Model: {} {}", config.models.fast_tier.cyan(), "[FREE TIER]".green().bold());
+    println!("Fallback Pool (100% Free Tiers):");
     for (i, m) in config.models.fallback_pool.iter().enumerate() {
-        println!("  {}. {}", i + 1, m);
+        println!("  {}. {} {}", i + 1, m, "[FREE]".green());
     }
     println!("Auto Fallback:   {}", config.models.auto_fallback);
     println!("Max Steps:       {}", config.agent.max_steps);

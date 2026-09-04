@@ -42,6 +42,13 @@ pub struct App {
     pub saved_draft: String,
 }
 
+#[derive(Debug, Clone)]
+pub enum SlashResult {
+    Handled,
+    Transform(String),
+    Unrecognized,
+}
+
 impl App {
     pub fn new(workspace: impl AsRef<Path>, config: ApexConfig) -> Self {
         let branch = Self::detect_git_branch(workspace.as_ref());
@@ -61,7 +68,7 @@ impl App {
             cost: 0.0,
             git_branch: branch,
             should_quit: false,
-            status_text: "NORMAL // READY".to_string(),
+            status_text: "IDLE // READY".to_string(),
             prompt_history: Vec::new(),
             history_idx: None,
             saved_draft: String::new(),
@@ -69,7 +76,7 @@ impl App {
 
         app.messages.push(TuiMessage {
             kind: TuiMessageKind::System,
-            content: "APEX // HIGH-PERFORMANCE CODING ENGINE ONLINE. Type /help for slash commands.".to_string(),
+            content: "APEX // HIGH-PERFORMANCE CODING ENGINE ONLINE. Type /skills for baked-in engineering playbooks or /help.".to_string(),
         });
 
         app
@@ -77,25 +84,25 @@ impl App {
 
     fn detect_git_branch(workspace: &Path) -> String {
         if let Ok(output) = std::process::Command::new("git")
-            .args(["branch", "--show-current"])
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(workspace)
             .output()
         {
             if output.status.success() {
                 let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !name.is_empty() {
-                    return format!("{}*", name);
+                    return name;
                 }
             }
         }
         "main*".to_string()
     }
 
-    /// Process slash commands (/help, /clear, /model, /diff, /status, /quit)
-    pub async fn handle_slash_command(&mut self, cmd_line: &str) -> bool {
+    /// Process slash commands (/help, /skills, /plan, /test, /review, /commit, /clear, /model, /diff, /status, /quit)
+    pub async fn handle_slash_command(&mut self, cmd_line: &str) -> SlashResult {
         let parts: Vec<&str> = cmd_line.trim().split_whitespace().collect();
         if parts.is_empty() {
-            return false;
+            return SlashResult::Unrecognized;
         }
 
         let cmd = parts[0].to_lowercase();
@@ -104,24 +111,142 @@ impl App {
                 self.messages.push(TuiMessage {
                     kind: TuiMessageKind::System,
                     content: "=== APEX SLASH COMMANDS & KEYBINDINGS ===\n\
-                             /help           - Show this help reference\n\
-                             /clear          - Clear conversation stream\n\
-                             /model <id>     - Switch active model on the fly\n\
-                             /diff           - Run and display current git diff\n\
-                             /status         - Display token telemetry & branch status\n\
-                             /quit           - Exit Apex\n\n\
-                             [KEYBINDINGS]\n\
-                             Enter           - Submit prompt\n\
-                             Tab             - Cycle sidebar panel\n\
-                             Up / Down       - Browse prompt history\n\
-                             PageUp / PageDn - Scroll activity stream\n\
-                             Home / End      - Jump to line start / end\n\
-                             Delete          - Delete character forward\n\
-                             Ctrl+W          - Delete word backward\n\
-                             Ctrl+U          - Clear line\n\
-                             Esc             - Cancel / Exit".to_string(),
+                              /skills         - List baked-in engineering skills & playbooks\n\
+                              /plan <idea>    - Activate architectural planning & scaffolding\n\
+                              /test [args]    - Run workspace test suite (Cargo/npm/pytest/Go)\n\
+                              /review         - Audit unstaged git diff against security & quality\n\
+                              /commit [msg]   - Stage and commit with Conventional Commits\n\
+                              /model <id>     - Switch active model on the fly\n\
+                              /diff           - Run and display current git diff\n\
+                              /status         - Display token telemetry & branch status\n\
+                              /clear          - Clear conversation stream\n\
+                              /help           - Show this help reference\n\
+                              /quit           - Exit Apex\n\n\
+                              [KEYBINDINGS]\n\
+                              Enter           - Submit prompt\n\
+                              Tab             - Cycle sidebar panel\n\
+                              Up / Down       - Browse prompt history\n\
+                              PageUp / PageDn - Scroll activity stream\n\
+                              Home / End      - Jump to line start / end\n\
+                              Delete          - Delete character forward\n\
+                              Ctrl+W          - Delete word backward\n\
+                              Ctrl+U          - Clear line\n\
+                              Esc             - Cancel / Exit".to_string(),
                 });
-                true
+                SlashResult::Handled
+            }
+            "/skills" => {
+                let summary = crate::agent::skills::render_skills_summary();
+                self.messages.push(TuiMessage {
+                    kind: TuiMessageKind::System,
+                    content: summary,
+                });
+                SlashResult::Handled
+            }
+            "/plan" => {
+                if parts.len() < 2 {
+                    self.messages.push(TuiMessage {
+                        kind: TuiMessageKind::System,
+                        content: "Usage: /plan <feature or architectural goal>\n\
+                                  Example: /plan Add user authentication with JWT and Redis cache".to_string(),
+                    });
+                    SlashResult::Handled
+                } else {
+                    let feature = parts[1..].join(" ");
+                    let prompt = format!(
+                        "[ARCHITECTURAL PLANNING SKILL ACTIVATED]\n\
+                         Target Feature: {}\n\n\
+                         Instructions:\n\
+                         1. Analyze requirements, constraints, and dependencies.\n\
+                         2. Propose module boundaries, data structures, and interface contracts.\n\
+                         3. Break down implementation into phased, dependency-ordered milestones.\n\
+                         4. Define concrete test verification steps before writing code.",
+                        feature
+                    );
+                    SlashResult::Transform(prompt)
+                }
+            }
+            "/test" => {
+                if let Some((name, cmd)) = crate::agent::skills::detect_test_runner(&self.workspace) {
+                    let run_cmd = if parts.len() > 1 {
+                        format!("{} {}", cmd, parts[1..].join(" "))
+                    } else {
+                        cmd.to_string()
+                    };
+
+                    self.messages.push(TuiMessage {
+                        kind: TuiMessageKind::System,
+                        content: format!("▶ Running {} suite (`{}`)...", name, run_cmd),
+                    });
+
+                    let res = match crate::tools::terminal::run_command(&self.workspace, &run_cmd, 120).await {
+                        Ok(out) => out,
+                        Err(err) => format!("Error executing test command: {}", err),
+                    };
+
+                    self.messages.push(TuiMessage {
+                        kind: TuiMessageKind::System,
+                        content: format!("=== TEST RESULTS ({}) ===\n{}", name, res),
+                    });
+                } else {
+                    self.messages.push(TuiMessage {
+                        kind: TuiMessageKind::System,
+                        content: "No supported test runner detected in workspace (Cargo, npm, pytest, go test).\n\
+                                  Run tests manually or create project test configuration.".to_string(),
+                    });
+                }
+                SlashResult::Handled
+            }
+            "/review" => {
+                let diff_output = match git_diff(&self.workspace, None).await {
+                    Ok(out) => out,
+                    Err(err) => format!("Error reading git diff: {}", err),
+                };
+
+                if diff_output.trim().is_empty() {
+                    self.messages.push(TuiMessage {
+                        kind: TuiMessageKind::System,
+                        content: "Working tree is clean. No unstaged git diffs found to review.".to_string(),
+                    });
+                    SlashResult::Handled
+                } else {
+                    let prompt = format!(
+                        "[CODE QUALITY & SECURITY REVIEW SKILL ACTIVATED]\n\
+                         Audit the following project diff against security vulnerabilities, regressions, unhandled errors, and performance bottlenecks:\n\n\
+                         ```diff\n\
+                         {}\n\
+                         ```",
+                        diff_output
+                    );
+                    SlashResult::Transform(prompt)
+                }
+            }
+            "/commit" => {
+                if parts.len() > 1 {
+                    let msg = parts[1..].join(" ");
+                    let commit_cmd = format!("git add -A && git commit -m \"{}\"", msg.replace('"', "\\\""));
+                    match crate::tools::terminal::run_command(&self.workspace, &commit_cmd, 30).await {
+                        Ok(out) => {
+                            self.messages.push(TuiMessage {
+                                kind: TuiMessageKind::System,
+                                content: format!("=== GIT COMMIT ===\n{}", out),
+                            });
+                            self.git_branch = Self::detect_git_branch(&self.workspace);
+                        }
+                        Err(err) => {
+                            self.messages.push(TuiMessage {
+                                kind: TuiMessageKind::Error,
+                                content: format!("Git commit error: {}", err),
+                            });
+                        }
+                    }
+                    SlashResult::Handled
+                } else {
+                    let prompt = "[CONVENTIONAL COMMIT SKILL ACTIVATED]\n\
+                                  Inspect git status and unstaged diffs. Stage verified files and create an atomic Conventional Commit (`feat:`, `fix:`, `refactor:`, `test:`) with a concise explanation."
+                        .to_string();
+                    SlashResult::Transform(prompt)
+                }
             }
             "/clear" => {
                 self.messages.clear();
@@ -130,7 +255,7 @@ impl App {
                     content: "Conversation history cleared.".to_string(),
                 });
                 self.scroll = 0;
-                true
+                SlashResult::Handled
             }
             "/model" => {
                 if parts.len() > 1 {
@@ -146,7 +271,7 @@ impl App {
                         content: format!("Current active model: {}\nUsage: /model <model_id> (e.g. /model deepseek/deepseek-r1:free)", self.active_model),
                     });
                 }
-                true
+                SlashResult::Handled
             }
             "/diff" => {
                 let diff_output = match git_diff(&self.workspace, None).await {
@@ -157,7 +282,7 @@ impl App {
                     kind: TuiMessageKind::System,
                     content: format!("=== CURRENT GIT DIFF ===\n{}", diff_output),
                 });
-                true
+                SlashResult::Handled
             }
             "/status" => {
                 self.messages.push(TuiMessage {
@@ -171,13 +296,13 @@ impl App {
                         self.active_model, self.token_count, self.cost, self.git_branch, self.workspace.display()
                     ),
                 });
-                true
+                SlashResult::Handled
             }
             "/quit" | "/exit" => {
                 self.should_quit = true;
-                true
+                SlashResult::Handled
             }
-            _ => false,
+            _ => SlashResult::Unrecognized,
         }
     }
 

@@ -1,3 +1,6 @@
-pub mod openrouter;
+pub mod omniroute;
 
-pub use openrouter::OpenRouterClient;
+pub use omniroute::OmniRouteClient;
+
+
+

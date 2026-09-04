@@ -93,21 +93,25 @@ async fn run_loop<B: ratatui::backend::Backend>(
                     app.history_idx = None;
 
                     // Intercept slash commands immediately
-                    if prompt.starts_with('/') {
-                        if app.handle_slash_command(&prompt).await {
-                            continue;
+                    let final_prompt = if prompt.starts_with('/') {
+                        match app.handle_slash_command(&prompt).await {
+                            crate::tui::app::SlashResult::Handled => continue,
+                            crate::tui::app::SlashResult::Transform(transformed) => transformed,
+                            crate::tui::app::SlashResult::Unrecognized => prompt,
                         }
-                    }
+                    } else {
+                        prompt
+                    };
 
                     app.is_running = true;
                     app.status_text = "AGENT RUNNING // THINKING".to_string();
 
                     app.messages.push(TuiMessage {
                         kind: TuiMessageKind::User,
-                        content: prompt.clone(),
+                        content: final_prompt.clone(),
                     });
 
-                    let _ = prompt_tx.send(prompt);
+                    let _ = prompt_tx.send(final_prompt);
                 } else {
                     app.handle_key(key);
                 }

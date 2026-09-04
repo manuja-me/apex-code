@@ -5,14 +5,14 @@ use std::time::Duration;
 use crate::agent::types::*;
 use crate::config::ApexConfig;
 
-pub struct OpenRouterClient {
+pub struct OmniRouteClient {
     client: Client,
     api_key: String,
     base_url: String,
     config: ApexConfig,
 }
 
-impl OpenRouterClient {
+impl OmniRouteClient {
     pub fn new(config: ApexConfig) -> Result<Self> {
         let api_key = config.get_api_key().unwrap_or_default();
         let client = Client::builder()
@@ -34,11 +34,12 @@ impl OpenRouterClient {
         messages: &[ChatMessage],
         tools: Option<&[ToolDefinition]>,
     ) -> Result<(String, Option<String>, Option<Vec<ToolCall>>, usize, usize)> {
-        if self.api_key.is_empty() {
+        let is_local = self.base_url.contains("localhost") || self.base_url.contains("127.0.0.1");
+        if self.api_key.is_empty() && !is_local {
             bail!(
-                "No OpenRouter API key found!\n\
-                 Set your free key with: set OPENROUTER_API_KEY=your_key or in ~/.config/apex/config.toml\n\
-                 Get a free key at: https://openrouter.ai/keys"
+                "No API key found for gateway '{}'!\n\
+                 Set your key with: set OMNIROUTE_API_KEY=your_key or in .apex/config.toml",
+                self.base_url
             );
         }
 
@@ -62,7 +63,7 @@ impl OpenRouterClient {
 
                     // Check for rate limit or queue overload
                     if err_str.contains("429") || err_str.contains("rate limit") || err_str.contains("busy") || err_str.contains("overloaded") {
-                        eprintln!("\x1b[33m[!] Model '{}' rate-limited on free tier. Auto-routing to next fallback model...\x1b[0m", model);
+                        eprintln!("\x1b[33m[!] Model '{}' rate-limited or busy. Auto-routing to next fallback model in OmniRoute pool...\x1b[0m", model);
                         tokio::time::sleep(Duration::from_millis(500)).await;
                         continue;
                     } else {
@@ -98,23 +99,34 @@ impl OpenRouterClient {
             max_tokens: Some(self.config.agent.max_tokens),
         };
 
-        let response = self.client.post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("HTTP-Referer", "https://github.com/manuja-me/apex-code")
-            .header("X-Title", "Apex Code Agent")
-            .json(&request_payload)
+        let mut request = self.client.post(&url).json(&request_payload);
+
+        let token = if !self.api_key.is_empty() {
+            &self.api_key
+        } else {
+            "omniroute"
+        };
+        request = request.header("Authorization", format!("Bearer {}", token));
+
+        if self.base_url.contains("openrouter.ai") {
+            request = request
+                .header("HTTP-Referer", "https://github.com/manuja-me/apex-code")
+                .header("X-Title", "Apex Code Agent");
+        }
+
+        let response = request
             .send()
             .await
-            .with_context(|| format!("Failed to connect to OpenRouter at {}", url))?;
+            .with_context(|| format!("Failed to connect to OmniRoute gateway at {}. Ensure OmniRoute is running.", url))?;
 
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            bail!("OpenRouter API error (HTTP {}): {}", status, error_text);
+            bail!("OmniRoute gateway error (HTTP {}): {}", status, error_text);
         }
 
         let resp_json: Value = response.json().await
-            .context("Failed to parse JSON response from OpenRouter")?;
+            .with_context(|| format!("Failed to parse JSON response from OmniRoute gateway at {}", url))?;
 
         let choice = resp_json.get("choices")
             .and_then(|c| c.as_array())

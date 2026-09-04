@@ -2,7 +2,7 @@
 name = "apex-code"
 version = "0.1.0"
 edition = "2021"
-description = "High-performance autonomous coding agent CLI and Swiss-style TUI with OpenRouter, LSP diagnostics, and tree-sitter intelligence"
+description = "High-performance autonomous coding agent CLI and Swiss-style TUI with OmniRoute gateway, multi-provider routing, and tree-sitter intelligence"
 authors = ["manuja-me"]
 license = "MIT"
 

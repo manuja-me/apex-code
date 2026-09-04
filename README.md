@@ -4,7 +4,7 @@
 
 [![Rust](https://img.shields.io/badge/Language-Rust%202021-DEA584.svg?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![OpenRouter](https://img.shields.io/badge/Provider-OpenRouter%20Free%20Tier-purple.svg?style=flat-square)](https://openrouter.ai/)
+[![OmniRoute](https://img.shields.io/badge/Gateway-OmniRoute-purple.svg?style=flat-square)](https://github.com/diegosouzapw/OmniRoute)
 [![TUI](https://img.shields.io/badge/UI-Swiss%20Ratatui-red.svg?style=flat-square)](https://github.com/ratatui/ratatui)
 
 ---
@@ -14,7 +14,7 @@
 | Dimension | Claude Code | Apex (`apex-code`) |
 | :--- | :--- | :--- |
 | **Runtime & Startup** | Node.js / TS (~100MB+ RAM, slower startup) | **Rust** (<10ms startup, single static binary, ~15MB RAM) |
-| **Model Lock-In** | Anthropic Claude API only (expensive) | **OpenRouter Free Tier + Multi-Provider** ($0.00 cost) |
+| **Model Lock-In** | Anthropic Claude API only (expensive) | **OmniRoute AI Gateway** (350+ providers, local-first) |
 | **429 Rate Limit Handling** | Fails or blocks | **Zero-Cost Failover Pool** (rotates models automatically) |
 | **Interface** | Standard scrolling CLI text | **Swiss International Typographic TUI** (`ratatui`) |
 | **Search Engine** | External shell grep / glob | **Embedded ripgrep engine** (`ignore` + `regex`) |
@@ -55,15 +55,14 @@ Apex features a terminal user interface inspired by the **Swiss International Ty
 
 ## Key Features
 
-### 1. 100% Free OpenRouter Tier Support
-Apex works out of the box with OpenRouter's free `:free` models:
-* **`qwen/qwen-2.5-coder-32b-instruct:free`** &mdash; Primary coding, editing, and diff engine.
-* **`deepseek/deepseek-r1:free`** &mdash; Deep step-by-step reasoning and algorithmic planning.
-* **`meta-llama/llama-3.3-70b-instruct:free`** &mdash; Broad refactoring and instruction following.
-* **`google/gemini-2.0-flash-exp:free`** &mdash; Lightning-fast repository search and file indexing.
+### 1. Seamless OmniRoute AI Gateway Support
+Apex works out of the box with the [OmniRoute](https://github.com/diegosouzapw/OmniRoute) AI Gateway (`http://localhost:20128/v1`), connecting you to 350+ AI providers:
+* **Token Compression**: Integrates with OmniRoute's RTK + Caveman engines to compress prompts and tool outputs, saving 15–95% of tokens.
+* **100% Free Tier Priority**: Pre-configured with the best free models (`qwen/qwen-2.5-coder-32b-instruct:free`, `deepseek/deepseek-r1:free`, `google/gemini-2.0-flash-exp:free`, etc.).
+* **Zero Local Friction**: No mandatory external API key required for local instances—defaults to local authorization automatically.
 
 ### 2. Automatic Zero-Cost Model Failover
-If OpenRouter's free tier encounters a `429 Too Many Requests` or temporary queue saturation, **Apex automatically hot-swaps to the next free model in the pool without interrupting your work session.**
+If a model hits a `429 Too Many Requests` or temporary queue saturation, **Apex automatically hot-swaps to the next model in the pool without interrupting your work session.**
 
 ### 3. Native Embedded Tooling Engine
 Unlike other agents that shell out to slow external scripts, Apex embeds its core tools directly into the binary:
@@ -93,11 +92,28 @@ Unlike other agents that shell out to slow external scripts, Apex embeds its cor
 
 ---
 
+## Baked-In Engineering Skills & Playbooks
+
+Apex embeds full software engineering playbooks directly into its reasoning loop and interactive prompt interface:
+
+| Slash Command | Skill Set | Description |
+| :--- | :--- | :--- |
+| `/skills` | **Skills Reference** | Lists all baked-in engineering playbooks and usage guidelines. |
+| `/plan <goal>` | **Architecture & Scaffolding** | Breaks down large features into module boundaries, types, and phased implementation plans. |
+| `/test [args]` | **TDD & Self-Healing** | Auto-detects workspace test runner (`cargo test`, `npm test`, `pytest`, `go test`) and executes suites. |
+| `/review` | **Security & Code Quality** | Audits unstaged `git diff` against security flaws, regressions, unhandled errors, and dead code. |
+| `/commit [msg]` | **Conventional Version Control** | Generates atomic Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`) from verified diffs. |
+| `/model <id>` | **Live Hot-Swap** | Switches active model on the fly without restarting your session. |
+| `/diff` | **Git Diff View** | Displays live project-wide unstaged modifications in the TUI stream. |
+| `/status` | **Engine Telemetry** | Displays active session tokens, costs, git branch, and workspace metrics. |
+
+---
+
 ## Quickstart
 
 ### Prerequisites
 * [Rust & Cargo](https://rustup.rs/) (edition 2021+)
-* A free [OpenRouter API Key](https://openrouter.ai/keys)
+* [OmniRoute](https://github.com/diegosouzapw/OmniRoute) running locally (e.g. `docker run -p 20128:20128 diegosouzapw/omniroute` or `npm i -g omniroute && omniroute`)
 
 ### 1. Installation
 ```bash
@@ -107,27 +123,45 @@ cargo build --release
 ```
 The compiled binary will be located at `target/release/apex.exe` (or `target/release/apex` on Linux/macOS).
 
-### 2. Configure Your Free OpenRouter Key
-Set your key in your current shell:
+### 2. Configure OmniRoute (Optional)
+Apex connects to `http://localhost:20128/v1` automatically. If your OmniRoute gateway runs on a different port or host, set:
 ```bash
 # Windows (PowerShell)
-$env:OPENROUTER_API_KEY = "your_openrouter_key"
+$env:OMNIROUTE_BASE_URL = "http://localhost:20128/v1"
+$env:OMNIROUTE_API_KEY = "your_key_if_configured"
 
 # Linux / macOS
-export OPENROUTER_API_KEY="your_openrouter_key"
+export OMNIROUTE_BASE_URL="http://localhost:20128/v1"
+export OMNIROUTE_API_KEY="your_key_if_configured"
 ```
 
 Or initialize a project-level configuration file:
 ```bash
 apex init
 ```
-This generates a `.apex/config.toml` where you can permanently configure API keys and model pools.
+This generates a `.apex/config.toml` pre-configured for OmniRoute.
 
 ### 3. Usage Examples
 
 #### Launch the Interactive Swiss TUI:
 ```bash
 apex
+```
+
+#### Plan an Architectural Feature:
+Inside the TUI:
+```text
+PROMPT> /plan Add JWT auth with Redis token blacklist
+```
+
+#### Run Workspace Tests:
+```text
+PROMPT> /test
+```
+
+#### Audit Unstaged Diffs:
+```text
+PROMPT> /review
 ```
 
 #### Run a Single Task Headless:
@@ -147,8 +181,9 @@ apex config
 | Keybinding | Action |
 | :--- | :--- |
 | <kbd>Enter</kbd> | Submit prompt to the agent |
-| <kbd>Tab</kbd> | Cycle sidebar panel (Telemetry / Workers / Keymap) |
-| <kbd>Up</kbd> / <kbd>Down</kbd> | Scroll conversation and execution stream |
+| <kbd>Tab</kbd> | Cycle sidebar panel (Telemetry / Workers / Skills & Controls) |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | Browse prompt history |
+| <kbd>PageUp</kbd> / <kbd>PageDn</kbd> | Scroll conversation and execution stream |
 | <kbd>Esc</kbd> | Interrupt current agent task / Exit |
 | <kbd>Ctrl+C</kbd> | Force quit application |
 
@@ -158,16 +193,16 @@ apex config
 
 ```toml
 [provider]
-provider_type = "openrouter"
-base_url = "https://openrouter.ai/api/v1"
-# api_key = "sk-or-v1-..." (Optional if set via OPENROUTER_API_KEY)
+provider_type = "omniroute"
+base_url = "http://localhost:20128/v1"
+api_key = "omniroute" # Optional for local OmniRoute instances
 
 [models]
 primary = "qwen/qwen-2.5-coder-32b-instruct:free"
 fallback_pool = [
     "qwen/qwen-2.5-coder-32b-instruct:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
     "deepseek/deepseek-r1:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
     "google/gemini-2.0-flash-exp:free"
 ]
 fast_tier = "google/gemini-2.0-flash-exp:free"
